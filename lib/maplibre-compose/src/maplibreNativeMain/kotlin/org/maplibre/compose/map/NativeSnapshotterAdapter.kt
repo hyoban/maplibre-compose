@@ -346,7 +346,7 @@ private constructor(
             initialExtent = extent.toFfiExtent(),
             mapMode = MapMode.STATIC,
             eventMask = RuntimeEventFlag.NONE,
-          ),
+          ).withPlatformFontOptions(),
         )
       val engine = NativeSnapshotEngine(owner, map, extent.scaleFactor, extent)
       try {

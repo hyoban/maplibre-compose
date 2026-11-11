@@ -22,17 +22,21 @@ internal actual fun rememberComposeMapPresentation(
   return key(renderMode, renderBackend) {
     rememberMlnFfiComposeMapPresentation(
       renderBackend = renderBackend,
-      surface = { renderer, surfaceModifier, surfaceLogger, presentFrames ->
+      surface = { renderer, surfaceModifier, surfaceLogger, _ ->
         key(renderMode, renderBackend) {
           AndroidMlnFfiSurface(
             renderer = renderer,
             runtimeBackends = runtimeBackends,
             backend = renderBackend,
             renderMode = renderMode,
+            loadColor = options.uiOptions.loadColor,
             maximumFps = options.renderOptions.maximumFps,
             modifier = surfaceModifier,
             logger = surfaceLogger,
-            presentWindow = presentFrames,
+            // Create the Android window while the style loads. The Compose load-color layers
+            // remain above it until both style readiness and its first presented buffer, so this
+            // overlaps SurfaceView traversal with style work without exposing the black hole.
+            presentWindow = true,
           )
         }
       },

@@ -812,8 +812,11 @@ internal open class MlnFfiStyleBinding(
   }
 
   override fun setLayerProperties(writes: List<LayerPropertyWrite>) {
-    writes.forEach { change ->
-      setLayerProperty(change.layerId, change.name, change.value, change.kind)
+    if (writes.isEmpty()) return
+    commandGroup {
+      writes.forEach { change ->
+        setLayerProperty(change.layerId, change.name, change.value, change.kind)
+      }
     }
   }
 

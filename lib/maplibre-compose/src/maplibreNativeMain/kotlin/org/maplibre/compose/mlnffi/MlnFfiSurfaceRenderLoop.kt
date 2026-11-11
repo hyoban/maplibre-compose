@@ -79,6 +79,9 @@ internal abstract class MlnFfiSurfaceRenderLoop<S : Any>(
   /** Frees the platform resources of [surface] after the renderer let go of it. May throw. */
   protected open fun releaseSurface(surface: S) {}
 
+  /** Called on the render thread after a completed frame has been presented. */
+  protected open fun onFramePresented() {}
+
   /**
    * Reports a terminal failure. The surface is already released, unless [releaseFailure] says why
    * it could not be.
@@ -332,7 +335,10 @@ internal abstract class MlnFfiSurfaceRenderLoop<S : Any>(
     try {
       when (renderer.render(this, frame)) {
         // The session wakes the host for each frame.
-        is MlnFfiFrameResult.Rendered -> pacer.rendered(start)
+        is MlnFfiFrameResult.Rendered -> {
+          pacer.rendered(start)
+          onFramePresented()
+        }
 
         MlnFfiFrameResult.RetryNextFrame -> requestFrameOnRenderThread()
         MlnFfiFrameResult.AwaitUpdate -> Unit

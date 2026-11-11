@@ -16,23 +16,30 @@ mavenPublishing {
   }
 }
 
+val publishJvmAndroidOnly =
+  providers.gradleProperty("maplibre.publishJvmAndroidOnly").orNull == "true"
+
 kotlin {
   android { namespace = "org.maplibre.compose.location" }
 
-  iosArm64()
-  iosSimulatorArm64()
-  macosArm64()
+  if (!publishJvmAndroidOnly) {
+    iosArm64()
+    iosSimulatorArm64()
+    macosArm64()
+  }
 
   jvm { compilerOptions { jvmTarget = project.getDesktopJvmTarget() } }
 
-  js {
-    useEsModules()
-    browser {
-      @OptIn(ExperimentalJsTestDsl::class)
-      test {
-        chromium()
-        firefox()
-        webkit()
+  if (!publishJvmAndroidOnly) {
+    js {
+      useEsModules()
+      browser {
+        @OptIn(ExperimentalJsTestDsl::class)
+        test {
+          chromium()
+          firefox()
+          webkit()
+        }
       }
     }
   }
@@ -40,12 +47,14 @@ kotlin {
   applyDefaultHierarchyTemplate()
 
   sourceSets {
-    jsTest.dependencies { implementation(npm("mocha", libs.versions.mocha.get())) }
+    if (!publishJvmAndroidOnly) {
+      jsTest.dependencies { implementation(npm("mocha", libs.versions.mocha.get())) }
 
-    listOf(appleMain, iosMain, iosArm64Main, iosSimulatorArm64Main, macosMain, macosArm64Main)
-      .forEach {
-        it { languageSettings { optIn("kotlinx.cinterop.ExperimentalForeignApi") } }
-      }
+      listOf(appleMain, iosMain, iosArm64Main, iosSimulatorArm64Main, macosMain, macosArm64Main)
+        .forEach {
+          it { languageSettings { optIn("kotlinx.cinterop.ExperimentalForeignApi") } }
+        }
+    }
 
     commonMain.dependencies {
       // Stability annotations for Compose apps, which already have them. Compile-only keeps them
@@ -61,9 +70,11 @@ kotlin {
       implementation(libs.lifecycle.runtime)
     }
 
-    jsMain.dependencies {
-      implementation(libs.kotlin.wrappers.js)
-      implementation(libs.kotlin.wrappers.browser)
+    if (!publishJvmAndroidOnly) {
+      jsMain.dependencies {
+        implementation(libs.kotlin.wrappers.js)
+        implementation(libs.kotlin.wrappers.browser)
+      }
     }
 
     commonTest.dependencies {
@@ -80,4 +91,10 @@ kotlin {
   }
 }
 
-configureBrowserTestBundle()
+if (!publishJvmAndroidOnly) configureBrowserTestBundle()
+
+if (publishJvmAndroidOnly) {
+  extensions.configure<org.jetbrains.dokka.gradle.DokkaExtension> {
+    dokkaPublications.configureEach { failOnWarning.set(false) }
+  }
+}

@@ -394,7 +394,7 @@ internal class MlnFfiMapSession(
           // Bootstrap extent until a render target applies its own. Scale is fixed for the map.
           initialExtent = LogicalExtent(1u, 1u, scaleFactor),
           eventMask = HandledMapEvents,
-        ),
+        ).withPlatformFontOptions(),
       )
     try {
       check(owner.register(created, child)) { "The map runtime is closed" }

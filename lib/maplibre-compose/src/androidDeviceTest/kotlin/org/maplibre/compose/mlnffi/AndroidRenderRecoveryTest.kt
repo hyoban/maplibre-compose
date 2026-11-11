@@ -2,10 +2,12 @@ package org.maplibre.compose.mlnffi
 
 import android.graphics.PixelFormat
 import android.media.ImageReader
+import android.os.Looper
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.FutureTask
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -16,6 +18,30 @@ import kotlin.test.assertTrue
 import org.maplibre.compose.map.MapExtent
 
 class AndroidRenderRecoveryTest {
+  @Test
+  fun presented_callback_runs_once_for_each_surface() {
+    val presented = AtomicInteger()
+    withController(onPresentedFrame = { presented.incrementAndGet() }) { controller, renderer ->
+      assertEquals(1, presented.get())
+      draw(controller, renderer)
+      assertEquals(1, presented.get(), "Later frames must not write first-frame Compose state")
+
+      controller.surfaceDestroyed()
+      renderer.attachSurface(controller)
+      renderer.awaitFrameOrFailure()
+      assertEquals(2, presented.get(), "A replacement surface needs its own first-frame callback")
+    }
+  }
+
+  @Test
+  fun render_loop_does_not_run_on_the_ui_thread() {
+    withController { controller, _ ->
+      controller.onRenderThread {
+        assertFalse(Looper.myLooper() == Looper.getMainLooper())
+      }
+    }
+  }
+
   @Test
   fun successful_frames_do_not_replenish_recovery_attempts() {
     assertRecoveryLimit(MlnFfiFrameResult.Rendered())
@@ -181,7 +207,10 @@ class AndroidRenderRecoveryTest {
     return task.get(10, TimeUnit.SECONDS)
   }
 
-  private fun withController(action: (AndroidMlnFfiSurfaceController, ScriptedRenderer) -> Unit) {
+  private fun withController(
+    onPresentedFrame: () -> Unit = {},
+    action: (AndroidMlnFfiSurfaceController, ScriptedRenderer) -> Unit,
+  ) {
     ImageReader.newInstance(32, 32, PixelFormat.RGBA_8888, 2).use { reader ->
       val renderer = ScriptedRenderer(reader)
       val controller =
@@ -189,6 +218,7 @@ class AndroidRenderRecoveryTest {
           renderer,
           renderer.backend,
           logger = null,
+          onPresentedFrame = onPresentedFrame,
           onFailure = {
             renderer.failures.add(it)
             renderer.completed.add(Unit)

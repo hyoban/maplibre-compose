@@ -20,6 +20,12 @@ pluginManagement {
 dependencyResolutionManagement {
   @Suppress("UnstableApiUsage")
   repositories {
+    providers.gradleProperty("maplibre.releaseRepository").orNull?.let { repository ->
+      maven(repository) { content { includeGroupAndSubgroups("org.maplibre.compose") } }
+    }
+    providers.gradleProperty("maplibre.nativeFfiRepository").orNull?.let { repository ->
+      maven(repository) { content { includeGroupAndSubgroups("org.maplibre.nativeffi") } }
+    }
     google {
       mavenContent {
         includeGroupAndSubgroups("androidx")

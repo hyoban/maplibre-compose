@@ -1,6 +1,7 @@
 package org.maplibre.compose.mlnffi
 
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.view.Surface
 import java.util.concurrent.FutureTask
@@ -36,8 +37,8 @@ internal enum class AndroidFramePacing {
  * chooses who demands frames. With [AndroidFramePacing.FramePacer], [maximumFps] limits the pacer;
  * with [AndroidFramePacing.RedrawClock], it delays the host's demands.
  *
- * Runs on the Android main thread. Surface callbacks and [close] may also come from other threads,
- * and wait for the main thread.
+ * Rendering runs on a dedicated Android looper. Surface callbacks and [close] may come from any
+ * thread and wait for that render looper, keeping EGL and native frame work out of UI frames.
  */
 internal class AndroidMlnFfiSurfaceController(
   renderer: MlnFfiMapRenderer,
@@ -46,6 +47,7 @@ internal class AndroidMlnFfiSurfaceController(
   maximumFps: Int? = null,
   private val pacing: AndroidFramePacing = AndroidFramePacing.FramePacer,
   vsync: AndroidVsync = ChoreographerVsync,
+  private val onPresentedFrame: () -> Unit = {},
   private val onFailure: (Throwable) -> Unit = {},
 ) :
   MlnFfiSurfaceRenderLoop<Surface>(
@@ -62,12 +64,14 @@ internal class AndroidMlnFfiSurfaceController(
 
   override val backends = RenderBackendPair(backend, ComposeRenderBackend.OpenGl)
 
-  private val main = Handler(Looper.getMainLooper())
-  private val ticker = AndroidFrameTicker(main, vsync)
+  private val renderThread = HandlerThread("MapLibre render").apply { start() }
+  private val render = Handler(renderThread.looper)
+  private val ticker = AndroidFrameTicker(render, vsync)
 
-  // Main-thread state.
+  // Render-thread state.
   private var pacerFps = maximumFps
   private var pacer: FramePacerHandle? = null
+  private var presentedCurrentSurface = false
 
   override val frameDemands: MlnFfiFrameDemands
     get() =
@@ -77,11 +81,14 @@ internal class AndroidMlnFfiSurfaceController(
       }
 
   fun surfaceCreated(surface: Surface, width: Int, height: Int, scaleFactor: Double) {
-    onMain { attachSurface(MapExtent.fromPhysical(width, height, scaleFactor)) { surface } }
+    onRender {
+      presentedCurrentSurface = false
+      attachSurface(MapExtent.fromPhysical(width, height, scaleFactor)) { surface }
+    }
   }
 
   fun surfaceChanged(width: Int, height: Int, scaleFactor: Double) {
-    onMain {
+    onRender {
       // The session resizes its window's surface itself.
       resizeSurface(MapExtent.fromPhysical(width, height, scaleFactor), reallocates = false)
     }
@@ -90,7 +97,7 @@ internal class AndroidMlnFfiSurfaceController(
   /** Releases the session's target before returning, and keeps the session for the next surface. */
   fun surfaceDestroyed() {
     if (closed) return
-    tearDownOnMain {
+    tearDownOnRender {
       try {
         loseSurface()
       } catch (error: Throwable) {
@@ -117,8 +124,8 @@ internal class AndroidMlnFfiSurfaceController(
 
   override fun close() {
     if (closed) return
-    tearDownOnMain {
-      if (closed) return@tearDownOnMain
+    tearDownOnRender {
+      if (closed) return@tearDownOnRender
       try {
         detachSurface()
         closed = true
@@ -130,17 +137,24 @@ internal class AndroidMlnFfiSurfaceController(
       pacer?.release()
       pacer = null
     }
+    if (closed) renderThread.quitSafely()
   }
 
-  override fun isRenderThread(): Boolean = Looper.myLooper() == Looper.getMainLooper()
+  override fun isRenderThread(): Boolean = Looper.myLooper() == renderThread.looper
+
+  override fun onFramePresented() {
+    if (presentedCurrentSurface) return
+    presentedCurrentSurface = true
+    onPresentedFrame()
+  }
 
   override fun schedule(delay: Duration, action: () -> Unit): ScheduledAction? {
     if (closed) return null
     val runnable = Runnable { action() }
     val posted =
-      if (delay > Duration.ZERO) main.postDelayed(runnable, delay.inWholeMillisRoundedUp())
-      else main.post(runnable)
-    return if (posted) ScheduledAction { main.removeCallbacks(runnable) } else null
+      if (delay > Duration.ZERO) render.postDelayed(runnable, delay.inWholeMillisRoundedUp())
+      else render.post(runnable)
+    return if (posted) ScheduledAction { render.removeCallbacks(runnable) } else null
   }
 
   override fun scheduleFrame(delay: Duration, action: () -> Unit): ScheduledAction? {
@@ -151,15 +165,15 @@ internal class AndroidMlnFfiSurfaceController(
     // TODO: pace these sessions with androidFramePacerCreate too, once the pacer keeps demanding
     // frames while Choreographer stops: https://github.com/maplibre/maplibre-native-ffi/issues/1753
     val tick = Runnable { ticker.postFrame { action() } }
-    if (delay > Duration.ZERO) main.postDelayed(tick, delay.inWholeMillisRoundedUp())
+    if (delay > Duration.ZERO) render.postDelayed(tick, delay.inWholeMillisRoundedUp())
     else tick.run()
     return ScheduledAction {
-      main.removeCallbacks(tick)
+      render.removeCallbacks(tick)
       ticker.cancel()
     }
   }
 
-  override fun <T> runAndWait(action: () -> T): T = postToMain(action).get()
+  override fun <T> runAndWait(action: () -> T): T = postToRender(action).get()
 
   override fun renderTarget(surface: Surface, extent: MapExtent, generation: Long) =
     AndroidSurfaceTarget(surface, backend, extent, generation)
@@ -171,7 +185,7 @@ internal class AndroidMlnFfiSurfaceController(
     onFailure(IllegalStateException(message, error))
   }
 
-  /** The pacer for this host's sessions, created on the main thread, whose looper it follows. */
+  /** The pacer for this host's sessions, created on the render thread whose looper it follows. */
   private fun currentPacer(): FramePacerHandle {
     checkRenderThread()
     return pacer
@@ -181,27 +195,27 @@ internal class AndroidMlnFfiSurfaceController(
         .also { pacer = it }
   }
 
-  private fun onMain(action: () -> Unit) {
+  private fun onRender(action: () -> Unit) {
     if (isRenderThread()) action() else schedule(Duration.ZERO, action)
   }
 
   /** Like [runAndWait], but drops a queued frame instead of drawing it while the caller waits. */
-  private fun <T> tearDownOnMain(action: () -> T): T {
+  private fun <T> tearDownOnRender(action: () -> T): T {
     val teardown = {
       cancelFrame()
       action()
     }
     if (isRenderThread()) return teardown()
     holdFramesForTeardown()
-    return postToMain {
+    return postToRender {
       resumeFramesAfterTeardown()
       teardown()
     }
       .get()
   }
 
-  private fun <T> postToMain(action: () -> T): FutureTask<T> =
-    FutureTask(action).also { check(main.post(it)) { "The Android main thread is shutting down" } }
+  private fun <T> postToRender(action: () -> T): FutureTask<T> =
+    FutureTask(action).also { check(render.post(it)) { "The Android map render thread is shutting down" } }
 }
 
 private fun Duration.inWholeMillisRoundedUp(): Long = (inWholeNanoseconds + 999_999) / 1_000_000

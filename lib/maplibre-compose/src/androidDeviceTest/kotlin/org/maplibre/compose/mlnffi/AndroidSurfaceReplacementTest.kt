@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.test.core.app.ActivityScenario
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -141,6 +142,7 @@ class ReusableSurfaceActivity : ComponentActivity() {
           runtimeBackends = setOf(MapRenderBackend.OpenGl),
           backend = MapRenderBackend.OpenGl,
           renderMode = AndroidRenderMode.Surface,
+          loadColor = Color.Transparent,
           modifier = Modifier.fillMaxSize(),
           logger = null,
         )

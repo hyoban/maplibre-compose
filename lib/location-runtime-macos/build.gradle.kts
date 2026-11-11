@@ -17,7 +17,11 @@ kotlin {
 }
 
 dependencies {
-  api(project(":lib:location"))
+  if (providers.gradleProperty("maplibre.publishJvmAndroidOnly").orNull == "true") {
+    api("org.maplibre.compose:location:${project.version}")
+  } else {
+    api(project(":lib:location"))
+  }
   implementation(libs.lwjgl.core)
   implementation(libs.kotlinx.coroutines.core)
 

@@ -3,13 +3,16 @@ package org.maplibre.compose.mlnffi
 import androidx.compose.foundation.AndroidEmbeddedExternalSurface
 import androidx.compose.foundation.AndroidExternalSurface
 import androidx.compose.foundation.AndroidExternalSurfaceZOrder
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.Lifecycle
@@ -27,6 +30,7 @@ internal fun AndroidMlnFfiSurface(
   runtimeBackends: Set<MapRenderBackend>,
   backend: MapRenderBackend,
   renderMode: AndroidRenderMode,
+  loadColor: Color,
   maximumFps: Int? = null,
   modifier: Modifier,
   logger: MapLog?,
@@ -34,9 +38,16 @@ internal fun AndroidMlnFfiSurface(
 ) {
   val density = LocalDensity.current.density.toDouble()
   val lifecycleOwner = LocalLifecycleOwner.current
+  val hasPresentedFrame = remember(renderer, backend) { mutableStateOf(false) }
   val controller =
     remember(renderer, backend) {
-      AndroidMlnFfiSurfaceController(renderer, backend, logger, maximumFps)
+      AndroidMlnFfiSurfaceController(
+        renderer,
+        backend,
+        logger,
+        maximumFps,
+        onPresentedFrame = { hasPresentedFrame.value = true },
+      )
     }
   val available = backend in runtimeBackends
 
@@ -97,23 +108,30 @@ internal fun AndroidMlnFfiSurface(
       // Do not reuse a SurfaceView whose callback belongs to a disposed renderer session.
       // https://issuetracker.google.com/issues/554586999
       key(controller) {
-        AndroidExternalSurface(
-          // Force a traversal for a replacement SurfaceView that would otherwise wait for another
-          // window invalidation. https://issuetracker.google.com/issues/554732248
-          modifier = modifier.graphicsLayer(),
-          // Never opaque: before its first swap the hole would otherwise read as black.
-          isOpaque = false,
-          // Behind the window, matching MapLibre's MapView: Compose overlays draw on top of the
-          // map.
-          zOrder = AndroidExternalSurfaceZOrder.Behind,
-        ) {
-          onSurface { surface, width, height ->
-            controller.surfaceCreated(surface, width, height, density)
-            surface.onChanged { changedWidth, changedHeight ->
-              controller.surfaceChanged(changedWidth, changedHeight, density)
+        Box(modifier) {
+          AndroidExternalSurface(
+            // Force a traversal for a replacement SurfaceView that would otherwise wait for
+            // another window invalidation. https://issuetracker.google.com/issues/554732248
+            modifier = Modifier.matchParentSize().graphicsLayer(),
+            // Never opaque: before its first swap the hole would otherwise read as black.
+            isOpaque = false,
+            // Behind the window, matching MapLibre's MapView: Compose overlays draw on top of the
+            // map.
+            zOrder = AndroidExternalSurfaceZOrder.Behind,
+          ) {
+            onSurface { surface, width, height ->
+              hasPresentedFrame.value = false
+              controller.surfaceCreated(surface, width, height, density)
+              surface.onChanged { changedWidth, changedHeight ->
+                controller.surfaceChanged(changedWidth, changedHeight, density)
+              }
+              surface.onDestroyed { controller.surfaceDestroyed() }
             }
-            surface.onDestroyed { controller.surfaceDestroyed() }
           }
+          // A SurfaceView's system background is black until EGL swaps its first buffer. Keep the
+          // existing Compose placeholder above it instead of connecting Canvas to the Surface,
+          // which would prevent EGL from acquiring the same producer.
+          if (!hasPresentedFrame.value) Box(Modifier.matchParentSize().background(loadColor))
         }
       }
   }
