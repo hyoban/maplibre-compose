@@ -3272,7 +3272,7 @@ public final class org/maplibre/compose/overlay/AttributionDefaults {
 
 public final class org/maplibre/compose/overlay/AttributionKt {
 	public static final fun AttributionLinks-WH-ejsw (Ljava/util/List;Landroidx/compose/ui/Modifier;Landroidx/compose/ui/text/TextStyle;Landroidx/compose/ui/text/TextLinkStyles;FZLandroidx/compose/runtime/Composer;II)V
-	public static final fun ExpandingAttributionButton (Landroidx/compose/ui/Modifier;Landroidx/compose/ui/Alignment;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Lorg/maplibre/compose/overlay/AttributionStyle;Lorg/maplibre/compose/overlay/AttributionStyle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+	public static final fun ExpandingAttributionButton (Landroidx/compose/ui/Modifier;Landroidx/compose/ui/Alignment;Lkotlin/jvm/functions/Function3;Lkotlin/jvm/functions/Function4;Lorg/maplibre/compose/overlay/AttributionStyle;Lorg/maplibre/compose/overlay/AttributionStyle;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;ZLandroidx/compose/runtime/Composer;II)V
 	public static final fun attributions (Lorg/maplibre/compose/map/MapStyleState;)Ljava/util/List;
 }
 

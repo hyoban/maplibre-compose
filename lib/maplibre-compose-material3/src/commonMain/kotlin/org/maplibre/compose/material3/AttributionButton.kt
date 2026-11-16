@@ -39,6 +39,7 @@ import org.maplibre.compose.overlay.ExpandingAttributionButton as BaseExpandingA
  *   given alignment
  * @param collapse Function that returns an [ExitTransition] for the collapsing animation based on
  *   the given alignment
+ * @param initiallyExpanded Whether the text is shown when the button first appears.
  */
 @Composable
 public fun ExpandingAttributionButton(
@@ -51,6 +52,7 @@ public fun ExpandingAttributionButton(
   collapsedStyle: AttributionStyle = AttributionButtonDefaults.collapsedStyle(),
   expand: (Alignment) -> EnterTransition = AttributionDefaults.expand,
   collapse: (Alignment) -> ExitTransition = AttributionDefaults.collapse,
+  initiallyExpanded: Boolean = true,
 ) {
   BaseExpandingAttributionButton(
     modifier = modifier,
@@ -61,6 +63,7 @@ public fun ExpandingAttributionButton(
     collapsedStyle = collapsedStyle,
     expand = expand,
     collapse = collapse,
+    initiallyExpanded = initiallyExpanded,
   )
 }
 

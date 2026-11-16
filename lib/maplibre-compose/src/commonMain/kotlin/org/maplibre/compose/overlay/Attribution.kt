@@ -76,7 +76,8 @@ import org.maplibre.compose.util.vertical
  * interacts with the map.
  *
  * It shows [attributions] of the enclosing map's style and draws nothing while the style declares
- * none. The text starts expanded and collapses when a gesture moves the camera.
+ * none. The text starts expanded, unless [initiallyExpanded] is `false`, and collapses when a
+ * gesture moves the camera.
  *
  * This component draws with Compose Foundation alone. The Material 3 module provides a themed
  * version of it.
@@ -92,6 +93,7 @@ import org.maplibre.compose.util.vertical
  *   given alignment
  * @param collapse Function that returns an [ExitTransition] for the collapsing animation based on
  *   the given alignment
+ * @param initiallyExpanded Whether the text is shown when the button first appears.
  */
 @Composable
 public fun ExpandingAttributionButton(
@@ -104,8 +106,9 @@ public fun ExpandingAttributionButton(
   collapsedStyle: AttributionStyle = AttributionDefaults.collapsedStyle(),
   expand: (Alignment) -> EnterTransition = AttributionDefaults.expand,
   collapse: (Alignment) -> ExitTransition = AttributionDefaults.collapse,
+  initiallyExpanded: Boolean = true,
 ) {
-  var expanded by remember { mutableStateOf(true) }
+  var expanded by remember { mutableStateOf(initiallyExpanded) }
   val currentMapState =
     checkNotNull(LocalMapState.current) {
       "ExpandingAttributionButton must be inside a MaplibreMap overlay"
